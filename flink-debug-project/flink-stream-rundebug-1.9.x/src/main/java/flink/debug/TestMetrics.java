@@ -16,7 +16,6 @@ public class TestMetrics {
 
         PrometheusReporter prometheusReporter = new PrometheusReporter();
 
-
     }
 
 
