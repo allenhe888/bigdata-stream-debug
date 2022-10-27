@@ -1,6 +1,5 @@
-package flink.debug;
+package flink.comm;
 
-import flink.comm.FlinkExampleCommon;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -41,7 +40,7 @@ public class FlinkStreamExample extends FlinkExampleCommon {
     public void testFlinkKafkaConsumerApi() throws Exception {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 //        env.enableCheckpointing(0L);
-        env.setParallelism(1);
+        env.setParallelism(2);
         env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
         Properties  kafkaProps = new Properties();
@@ -50,7 +49,7 @@ public class FlinkStreamExample extends FlinkExampleCommon {
 
 //        runFlinkKafkaConsumerDemo(env, "bdnode102:9092", "testSourceTopic", kafkaProps);
 //        runFlinkKafkaConsumerDemo(env, "bdnode102:9092", "testSourceTopic", kafkaProps);
-        runFlinkKafka2KafkaDemo(env, "bdnode102:9092", "testSourceTopic", "testSinkTopic", kafkaProps);
+        runFlinkKafka2KafkaDemo(env, "bdnode112:9092", "testSourceTopic", "testSinkTopic", kafkaProps);
 
     }
 

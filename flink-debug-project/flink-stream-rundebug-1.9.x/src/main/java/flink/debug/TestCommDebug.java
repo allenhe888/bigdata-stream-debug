@@ -1,0 +1,48 @@
+package flink.debug;
+
+import org.apache.flink.streaming.api.TimeCharacteristic;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.junit.Test;
+
+import java.util.Properties;
+
+/**
+ * @Author: jiaqing.he
+ * @DateTime: 2022/10/27 16:52
+ */
+public class TestCommDebug extends FlinkDebugCommon {
+    private String bootstrapServers = "192.168.110.79:9092";
+
+    @Test
+    public void runCollect2WindowAggPrintDemo() throws Exception {
+        runCollect2WindowAggPrintDemo(null, -1, 2);
+    }
+
+
+    @Test
+    public void testKafkaSource() throws Exception {
+        StreamExecutionEnvironment streamEnv = getStreamEnv();
+        Properties  kafkaProps = new Properties();
+        kafkaProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        runFlinkKafkaConsumerDemo(streamEnv, bootstrapServers, "testSourceTopic", null);
+    }
+
+    @Test
+    public void testFlinkKafka2KafkaDemo() throws Exception {
+        final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+//        env.enableCheckpointing(0L);
+        env.setParallelism(1);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+
+        Properties  kafkaProps = new Properties();
+        kafkaProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+//        kafkaProps.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+
+//        runFlinkKafkaConsumerDemo(env, "bdnode102:9092", "testSourceTopic", kafkaProps);
+        runFlinkKafka2KafkaDemo(env, bootstrapServers, "testSourceTopic", "testSinkTopic", kafkaProps);
+
+    }
+
+
+}

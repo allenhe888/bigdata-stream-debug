@@ -13,6 +13,7 @@ import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrdernessTimestampExtractor;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
@@ -30,6 +31,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Iterator;
 import java.util.Properties;
+import java.util.Random;
 
 @SuppressWarnings("checkstyle:ClassDataAbstractionCoupling")
 public class FlinkExampleCommon {
@@ -209,6 +211,17 @@ public class FlinkExampleCommon {
 
     }
 
+
+    static class MyKeySelector implements KeySelector<JSONObject, String> {
+        private Random random = new Random();
+        private int randomSuffixNum = 5;
+        @Override
+        public String getKey(JSONObject value) throws Exception {
+            String groupKey = "groupKey_" + random.nextInt(randomSuffixNum);
+            return groupKey;
+        }
+    }
+
     public void runFlinkKafka2KafkaDemo(StreamExecutionEnvironment env, String bootstrapServices, String inputTopic, String outputTopic, Properties kafkaProps) {
         if (null == kafkaProps) {
             kafkaProps = new Properties();
@@ -220,12 +233,49 @@ public class FlinkExampleCommon {
         FlinkKafkaConsumer<String> kafka = new FlinkKafkaConsumer<String>(inputTopic, stringSchema, kafkaProps);
         DataStreamSource<String> kafkaDataStream = env.addSource(kafka);
 
-        DataStream<String> ds = kafkaDataStream.map(line -> {
-            JSONObject json = JSON.parseObject(line);
-            json.put("timeMillis", System.currentTimeMillis());
-            return json.toJSONString();
-        });
-        ds.addSink(new FlinkKafkaProducer<>(bootstrapServices, outputTopic, new SimpleStringSchema()));
+        SingleOutputStreamOperator<String> outDS = kafkaDataStream
+                .map(line -> {
+                    JSONObject json = JSON.parseObject(line);
+                    json.put("timeMillis", System.currentTimeMillis());
+                    return json;
+                })
+                .assignTimestampsAndWatermarks(new BoundedOutOfOrdernessTimestampExtractor<JSONObject>(Time.seconds(5)) {
+                    @Override
+                    public long extractTimestamp(JSONObject element) {
+                        Long timeMillis = element.getLong("timeMillis");
+                        if (null == timeMillis) {
+                            timeMillis = System.currentTimeMillis();
+                        }
+                        return timeMillis;
+                    }
+                })
+                .map(line -> {
+                    line.put("tid", Thread.currentThread().getId());
+                    return line;
+                })
+                .keyBy(new MyKeySelector())
+                .timeWindow(Time.minutes(1))
+                .process(new ProcessWindowFunction<JSONObject, JSONObject, String, TimeWindow>() {
+                    @Override
+                    public void process(String key, Context context, Iterable<JSONObject> elements, Collector<JSONObject> out) throws Exception {
+                        JSONObject json = new JSONObject();
+                        json.put("key", key);
+                        Iterator<JSONObject> it = elements.iterator();
+                        int count = 0;
+                        while (it.hasNext()) {
+                            JSONObject data = it.next();
+                            count++;
+                        }
+
+                        json.put("count", count);
+                        out.collect(json);
+
+                        Thread.sleep(500);
+                    }
+                })
+                .map(k -> k.toJSONString());
+
+        outDS.addSink(new FlinkKafkaProducer<>(bootstrapServices, outputTopic, new SimpleStringSchema()));
 
         try {
             env.execute(this.getClass().getSimpleName());
@@ -237,6 +287,71 @@ public class FlinkExampleCommon {
 
     }
 
+
+    public void testConsumerKafkaToJson(StreamExecutionEnvironment env, FlinkKafkaConsumer<String> kafkaConsumer) {
+
+        DataStreamSource<String> kafkaDataStream = env.addSource(kafkaConsumer);
+
+        SingleOutputStreamOperator<String> outDS = kafkaDataStream
+                .map(line -> {
+                    JSONObject json;
+                    try {
+                        json = JSON.parseObject(line);
+
+                    } catch (Exception e) {
+                        json = new JSONObject();
+                        json.put("line", line);
+                    }
+                    json.put("timeMillis", System.currentTimeMillis());
+                    return json;
+                })
+                .assignTimestampsAndWatermarks(new BoundedOutOfOrdernessTimestampExtractor<JSONObject>(Time.seconds(5)) {
+                    @Override
+                    public long extractTimestamp(JSONObject element) {
+                        Long timeMillis = element.getLong("timeMillis");
+                        if (null == timeMillis) {
+                            timeMillis = System.currentTimeMillis();
+                        }
+                        return timeMillis;
+                    }
+                })
+                .map(json -> {
+                    json.put("tid", Thread.currentThread().getId());
+                    return json;
+                })
+                .keyBy(new MyKeySelector())
+                .timeWindow(Time.minutes(1))
+                .process(new ProcessWindowFunction<JSONObject, JSONObject, String, TimeWindow>() {
+                    @Override
+                    public void process(String key, Context context, Iterable<JSONObject> elements, Collector<JSONObject> out) throws Exception {
+                        JSONObject json = new JSONObject();
+                        json.put("key", key);
+                        Iterator<JSONObject> it = elements.iterator();
+                        int count = 0;
+                        while (it.hasNext()) {
+                            JSONObject data = it.next();
+                            count++;
+                        }
+
+                        json.put("count", count);
+                        out.collect(json);
+
+                        Thread.sleep(500);
+                    }
+                })
+                .map(k -> k.toJSONString());
+
+        outDS.print("TestPrintOut: ");
+
+        try {
+            env.execute(this.getClass().getSimpleName());
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+
+
+    }
 
 
 }
